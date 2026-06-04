@@ -1,142 +1,97 @@
-import os,json
-from pydantic import BaseModel
+import os, json, time, csv
 from groq import Groq
 from dotenv import load_dotenv
 
-
 load_dotenv()
+api_key = os.getenv("api")
+if not api_key: raise ValueError("Missing API key")
 
-api_key=os.getenv("api")
+client = Groq(api_key=api_key)
+model = "llama-3.3-70b-versatile"
 
-if not api_key:
-    raise ValueError("Missing API key\n")
 
-else:
-    print("API key has been loaded\n")
-
-client=Groq(api_key=api_key)
-model="llama-3.3-70b-versatile"
-
-class Validator(BaseModel):
-    name:str
-    role:str
-    experience:int
-    skills:list[str]
+INPUT_PRICE_PER_MILLION = 0.59 
+OUTPUT_PRICE_PER_MILLION = 0.79
 
 class Tester():
-    def __init__(self):
-        pass
-
-    def clean_json_response(self, raw_text: str) -> str:
-        cleaned = raw_text.replace("```json", "").replace("```", "")
-        start = cleaned.find('{')
-        end = cleaned.rfind('}')
-        if start != -1 and end != -1:
-            return cleaned[start:end+1]
-        return cleaned.strip()
-
-
-    def json_validate(self,value:str):
-        try:
-            json_parser=json.loads(value)
-            validator=Validator.model_validate(json_parser)
-            return {"status":"success","data":validator.model_dump()}
-        except json.JSONDecodeError as e:
-            return {"status":"json_error","error":str(e)}
-        except Exception as e:
-            return {"status" :"schema_error", "error": str(e)}
-
-    def strict_call(self,user_input:str):
-        response=client.chat.completions.create(
-            model=model,
-            messages=[
-            {
-                "role":"system",
-                "content":
-                    "Return ONLY a JSON object with these exact fields:\n"
-                    "- name: string\n"
-                    "- role: string\n"
-                    "- experience: integer\n"   
-                    "- skills: array of strings\n"
-                    "Example: {\"name\": \"Alice\", \"role\": \"Engineer\", \"experience\": 5, \"skills\": [\"Python\", \"AWS\"]}\n"
-                    "DO NOT add any other text. ONLY JSON."
-            },
-            {
-                "role":"user",
-                "content":user_input
-            }
-            ],
-            response_format={"type": "json_object"}
-        )
-        response=response.choices[0].message.content
-        print(response)
-        return self.json_validate(response)
     
-    def freeform_call(self,user_input:str):
-        response=client.chat.completions.create(
-            model=model,
-            messages=[
-            {
-                "role":"system",
-                "content":
-                    "Return ONLY a JSON object with these exact fields:\n"
-                    "- name: string\n"
-                    "- role: string\n"
-                    "- experience: integer\n"   
-                    "- skills: array of strings\n"
-                    "Example: {\"name\": \"Alice\", \"role\": \"Engineer\", \"experience\": 5, \"skills\": [\"Python\", \"AWS\"]}\n"
-                    "DO NOT add any other text. ONLY JSON."
-            },
-            {
-                "role":"user",
-                "content":user_input
+    def llm_call(self, user_input: str):
+        start_time = time.time()
+        
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": "Act as a Q&A bot. Be concise."},
+                    {"role": "user", "content": user_input}
+                ]
+            )
+                       
+            latency_ms = round((time.time() - start_time) * 1000, 2)
+            
+            usage = response.usage
+            prompt_tokens = usage.prompt_tokens
+            completion_tokens = usage.completion_tokens
+            total_tokens = usage.total_tokens
+            
+            cost_usd = (
+                (prompt_tokens / 1_000_000) * INPUT_PRICE_PER_MILLION +
+                (completion_tokens / 1_000_000) * OUTPUT_PRICE_PER_MILLION
+            )
+            
+            
+            return {
+                "status": "success",
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": total_tokens,
+                "cost_usd": round(cost_usd, 6),
+                "latency_ms": latency_ms,
+                "content_snippet": response.choices[0].message.content[:50] 
             }
-            ]
-        )
-        response=response.choices[0].message.content
-        response=self.clean_json_response(response)
-        print(response)
-        return self.json_validate(response)
 
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": str(e),
+                "cost_usd": 0,
+                "latency_ms": round((time.time() - start_time) * 1000, 2)
+            }
 
-     
-    def run_ab_test(self):
+    def run_benchmark(self):
         prompts = [
-            "Senior Python Engineer",
-            "Junior Data Analyst",
-            "DevOps Specialist"
+            "Generate a profile for a senior Python engineer",  
+            "Create a junior data analyst profile",             
+            "Profile a DevOps specialist" 
         ]
-        # val=self.freeform_call(prompts[0])
-        # print(val['status'])
-
-        # print(30*"*")
-
-        # valer=self.strict_call(prompts[0])
-        # print(valer['status'])
-
         
-        strict_success = 0
-        free_success = 0
+        results = []
+        total_cost = 0
+        total_tokens = 0
         
-        for i in range(20):
-            prompt = prompts[i % 3]
-            
-            s_res = self.strict_call(prompt)
-            if s_res['status'] == 'success': strict_success += 1
-            
-            f_res = self.freeform_call(prompt)
-            if f_res['status'] == 'success': free_success += 1
-            
-            print(f"{i+1}: Strict={s_res['status']} | Free={f_res['status']}")
+        print(f"{'Call':<5} | {'Tokens':<8} | {'Cost ($)':<10} | {'Latency (ms)':<12}")
+        
 
-        print(f"\nFinal Score: Strict {strict_success}/20 vs Free {free_success}/20")
+        for i in range(30): 
+            prompt = prompts[i % len(prompts)]
+            result = self.llm_call(prompt)
             
-            
-
+            if result['status'] == 'success':
+                results.append(result)
+                total_cost += result['cost_usd']
+                total_tokens += result['total_tokens']
+                
+                print(f"{i+1:<5}  {result['total_tokens']:<8}  ${result['cost_usd']:<9.6f}  {result['latency_ms']:<12}")
+        
+        # Summary
+        avg_cost = total_cost / len(results) if results else 0
+        avg_tokens = total_tokens / len(results) if results else 0
+        
+        print("-" * 45)
+        print(f"TOTAL COST: ${total_cost:.6f}")
+        print(f"AVG TOKENS/CALL: {avg_tokens:.0f}")
+        print(f"AVG COST/CALL: ${avg_cost:.6f}")
 
 if __name__=="__main__":
-    tester=Tester()
-    tester.run_ab_test()
-
-            
-
+    tester = Tester()
+    tester.run_benchmark()
