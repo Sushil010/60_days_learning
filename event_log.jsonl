@@ -1,0 +1,5 @@
+{"timestamp": "2026-06-06T21:02:12.515146", "status": "received", "details": {"user_prompt": "Explain deep learning"}, "method": "simple_call", "trace_id": "19f4ddaf"}
+{"timestamp": "2026-06-06T21:02:12.517823", "status": "received", "details": {"hashed_prompt": "8571deafe07e"}, "method": "hashed_call", "trace_id": "19f4ddaf"}
+{"timestamp": "2026-06-06T21:02:12.519305", "status": "error", "details": {"attempt1": "failure"}, "method": "api_timeout", "trace_id": "19f4ddaf"}
+{"timestamp": "2026-06-06T21:02:12.721293", "status": "success", "details": {"attempt2": "success"}, "method": "api_loaded", "trace_id": "19f4ddaf"}
+{"timestamp": "2026-06-06T21:02:12.722854", "status": "success", "details": {"token": 50, "cost_usd": 0.0002}, "method": "cost and token loaded", "trace_id": "19f4ddaf"}

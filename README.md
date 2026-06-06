@@ -1,12 +1,3 @@
-# 60 Days Learning - Groq API & LLM Integration
-
-## Project Overview
-Learning journey exploring Groq API, LLM integrations, error handling, optimization, and cost analysis.
-
----
-
-## Day-by-Day Summary
-
 ### Day 1: Basic LLM Integration with Validation
 **File:** `day_1main.py`
 
@@ -64,6 +55,21 @@ Learning journey exploring Groq API, LLM integrations, error handling, optimizat
 - Summary stats: Total cost, average tokens per call, average cost per call
 
 **What It Does:** Benchmarks API performance and provides cost analysis - useful for understanding API expenses and performance metrics
+
+---
+
+### Day 5: Multi-Version Prompt Comparison
+**File:** `day5_main.py`
+
+**Main Purpose:** Compare different prompt versions and their impact on token usage/latency
+
+**Key Code Parts:**
+- `prompt_hash()`: Creates 12-character hash of system prompts for easy identification
+- `llm_version_call()`: Makes API call with a system prompt and user query, tracks performance metrics
+- `run_multi_version()`: Compares two prompt versions (concise vs detailed) with 10 iterations each
+- Tracks: Prompt hash, tokens used, latency per call
+
+**What It Does:** Tests how different system prompts affect API response efficiency - shows token count and latency differences between concise vs detailed instruction sets
 
 ---
 
