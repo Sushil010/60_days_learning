@@ -73,6 +73,65 @@
 
 ---
 
+### Day 6: Event Logging & Tracing
+**File:** `day_6main.py`
+
+**Main Purpose:** Implement structured event logging for tracking API calls and pipeline execution
+
+**Key Code Parts:**
+- `event_log()`: Logs events to both stdout (JSON format) and `event_log.jsonl` file
+- Logs include: `timestamp`, `status`, `details`, `method`, `trace_id`
+- `prompt_call()`: Example function demonstrating trace ID generation and multi-step event logging
+- Persistent logging: Events appended to JSONL file for later analysis
+
+**What It Does:** Creates an audit trail of all API interactions - useful for debugging, monitoring, and analyzing API behavior patterns
+
+---
+
+## Projects
+
+### Week 1: Advanced Profile Extraction Engine
+**Directory:** `projects/week1/`
+
+**Main Purpose:** Production-ready data extraction pipeline with schema validation, cost tracking, and error handling
+
+**Files:**
+- `main.py`: Main extraction engine with `TraceExtractEngine` class
+- `config.py`: System prompts (GENERAL_PROMPT and STRICT_PROMPT)
+- `models.py`: Pydantic schema for ProfileExtractor
+
+**Key Features:**
+- **TraceExtractEngine class**: 
+  - Configurable strict/freeform modes
+  - Automatic schema validation using Pydantic
+  - Cost calculation per API call
+  - Request hashing for prompt identification
+  - Retry logic with transient/permanent error distinction
+  
+- **ProfileExtractor schema**: Validates extracted data with fields:
+  - `name`: String
+  - `role`: String  
+  - `experience_years`: Integer
+  - `skills`: List of strings
+
+- **Response tracking**: Returns comprehensive result object with:
+  - `trace_id`: Unique request identifier
+  - `status`: success/json_error/schema_error/transient_error/permanent_error
+  - `data`: Validated profile object
+  - `error`: Error details if applicable
+  - `metrics`: Token count and cost in USD
+  - `prompt_hash`: 12-char hash of system prompt
+  - `latency_ms`: Response time in milliseconds
+
+**What It Does:** Takes messy text input, extracts structured profile data via Groq API, validates against schema, tracks costs and performance, and handles errors gracefully
+
+---
+
 ## Requirements
 - Groq API key (stored in `.env` as `api`)
 - Dependencies in `requirements.txt`
+
+## Key Dependencies
+- `groq`: Groq API client
+- `pydantic`: Schema validation
+- `python-dotenv`: Environment variable management
