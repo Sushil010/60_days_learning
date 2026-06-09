@@ -88,6 +88,22 @@
 
 ---
 
+### Day 9: Semantic Caching with ChromaDB
+**File:** `day9_main.py`
+
+**Main Purpose:** Implement semantic caching to avoid redundant API calls for similar queries
+
+**Key Code Parts:**
+- `chromadb.PersistentClient`: Initializes ChromaDB for persistent semantic cache storage
+- `collection`: Get-or-create collection named "semantic_cache" to store query-answer pairs
+- `THRESHOLD = 0.15`: Similarity distance threshold to determine cache hits (lower distance = more similar)
+- `get_answer()`: Queries cached responses using semantic similarity; returns cached answer if distance < threshold, otherwise calls Groq API
+- Cache storage: Stores query answer and metadata (original query) for future semantic matching
+
+**What It Does:** Uses ChromaDB for semantic similarity search to cache LLM responses - detects similar queries and returns cached answers without API calls, reducing costs and latency while maintaining response quality
+
+---
+
 ## Projects
 
 ### Week 1: Advanced Profile Extraction Engine
