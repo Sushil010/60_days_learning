@@ -1,3 +1,4 @@
 .env
 venv
 *.jsonl
+my_cache_db
