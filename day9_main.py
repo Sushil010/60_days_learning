@@ -30,6 +30,7 @@ THRESHOLD = 0.15
 def get_answer(user_query: str):
   
     results = collection.query(
+    
         query_texts=[user_query], 
         n_results=1,              
         include=["distances", "documents", "metadatas"] 
@@ -66,13 +67,13 @@ def get_answer(user_query: str):
 
 if __name__ == "__main__":
     print("--- Run 1: First time asking ---")
-    ans1 = get_answer("How do I change my flight booking?")
+    ans1 = get_answer("How a lonlely cat does?")
     print(f"Answer: {ans1}\n")
 
     print("--- Run 2: Different words, same meaning ---")
-    ans2 = get_answer("Can I modify my ticket?")
+    ans2 = get_answer("What does a cat do when it gets lonley?")
     print(f"Answer: {ans2}\n")
     
     print("--- Run 3: Completely different topic ---")
-    ans3 = get_answer("What is the capital of France?")
+    ans3 = get_answer("What does cat look like?")
     print(f"Answer: {ans3}")
