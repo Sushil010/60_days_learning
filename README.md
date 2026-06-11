@@ -104,6 +104,45 @@
 
 ---
 
+### Day 10: Rate Limiting with Token Bucket Algorithm
+**File:** `day10_main.py`
+
+**Main Purpose:** Implement rate limiting to prevent API throttling and resource exhaustion
+
+**Key Code Parts:**
+- `TokenBucket` class: Manages rate limiting using token bucket algorithm
+  - `max_tokens`: Maximum tokens available (capacity)
+  - `token_rate`: Rate at which tokens are refilled (tokens per second)
+  - `refill()`: Calculates new tokens based on elapsed time
+  - `consume()`: Checks if token available before allowing request
+- Test loop: Simulates 7 requests with 0.2s intervals to demonstrate rate limiting behavior
+
+**What It Does:** Implements token bucket algorithm for rate limiting - allows controlled request flow by refilling tokens at a fixed rate and consuming one per request, blocking requests when no tokens available
+
+---
+
+### Day 11: Input Validation & Security (InputGuard)
+**File:** `day11_main.py`
+
+**Main Purpose:** Sanitize and validate user inputs to prevent injection attacks and malicious prompts
+
+**Key Code Parts:**
+- `InputGuard` class: Implements multi-layer input validation
+  - `max_length`: Maximum allowed input length (default 2000 chars)
+  - `pattern`: List of regex patterns to detect malicious prompts:
+    - "ignore previous instructions"
+    - "ignore all previous"
+    - "system prompt"
+    - "dan mode"
+    - "jailbreak"
+  - `sanitize()`: Validates input against length and pattern rules
+- Response object: Returns `{"status": "blocked"|"safe", "reason": "...", "cleaned_input": "..."}`
+- Test cases: Demonstrates blocking of prompt injection attempts and oversized inputs
+
+**What It Does:** Protects LLM applications from prompt injection attacks and malicious inputs - validates input length, detects jailbreak patterns, and blocks suspicious requests before they reach the API
+
+---
+
 ## Projects
 
 ### Week 1: Advanced Profile Extraction Engine
