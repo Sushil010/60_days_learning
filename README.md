@@ -143,6 +143,26 @@
 
 ---
 
+### Day 12: Streaming API Responses
+**File:** `day12_main.py`
+
+**Main Purpose:** Implement streaming response handling to display API output in real-time
+
+**Key Code Parts:**
+- `StreamDate` class: Handles both streaming and non-streaming extraction modes
+  - `__init__(stream=False)`: Initialize with streaming mode flag
+  - `extract_data()`: Generator function that yields response chunks or full response
+- Streaming mode logic:
+  - Builds `full_content` by accumulating text chunks
+  - Yields individual text pieces as they arrive (real-time printing)
+  - Yields final metadata object with trace ID, token count, and full content
+- Non-streaming mode: Returns complete response as single object with metadata
+- Response format: `{"id": trace_id, "token": total_tokens, "content": full_response}`
+
+**What It Does:** Demonstrates streaming API responses for real-time feedback - yields text chunks as they arrive from the LLM API, providing instant user feedback while accumulating the full response for final validation and metadata collection
+
+---
+
 ## Projects
 
 ### Week 1: Advanced Profile Extraction Engine
