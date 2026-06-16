@@ -2,3 +2,4 @@
 venv
 *.jsonl
 my_cache_db
+*__pycache__
