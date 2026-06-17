@@ -202,6 +202,80 @@
 
 ---
 
+### Week 2: OmniFeed AI - Real-Time Tech Intelligence Engine
+**Directory:** `projects/week2/`
+
+**Main Purpose:** Multi-source RSS news aggregator with AI-powered summarization, semantic caching, and guardrails protection
+
+**Files:**
+- `main.py`: Core processing pipeline with NewsExtractor and NewsProcessor classes
+- `ui.py`: Streamlit web interface for real-time visualization
+- `models.py`: Pydantic models for data validation
+- `news_storage/`: ChromaDB semantic cache for processed summaries
+
+**Key Components:**
+
+1. **NewsExtractor class** - Async RSS Feed Fetching:
+   - Fetches from 4 sources: TechCrunch, HackerNews, BBC Tech, TheVerge
+   - Async concurrent requests using `aiohttp` for high performance
+   - HTML tag cleaning with regex to extract clean text summaries
+   - Returns `IngestionResult` with total count and article list
+
+2. **NewsProcessor class** - AI Processing & Caching:
+   - **Semantic Caching with ChromaDB**:
+     - Stores article summaries with AI-generated summaries as metadata
+     - Uses vector similarity search to find cached results
+     - Configurable threshold (default 0.3) to control match strictness
+     - Returns cached summary if distance < threshold (distance: 0.0 = exact match)
+     - Avoids expensive LLM API calls for similar articles
+   
+   - **Security Guardrails**:
+     - Blocks malicious prompt injection attempts
+     - Detects patterns: "SYSTEM_PROMPT", "jailbreak", "developer mode", etc.
+     - Prevents prompt attacks before reaching the LLM API
+   
+   - **LLM Integration**:
+     - Uses Groq's llama-3.3-70b model for summarization
+     - One-sentence summary generation for each article
+     - Token counting and performance tracking
+     - Stores results in ChromaDB for future cache hits
+   
+   - **Cache Management**:
+     - `clear_cache()` method to reset all stored summaries
+     - Useful for testing or starting fresh
+
+3. **Streamlit Web UI** - Interactive Dashboard:
+   - Real-time pipeline visualization
+   - Adjustable cache sensitivity slider (threshold control)
+   - Progress tracking during article processing
+   - Expandable article details with original summary and AI insight
+   - Cache management button for clearing stored data
+   - Performance metrics display
+
+**Key Features:**
+
+- **Asynchronous Processing**: Concurrent RSS fetching for optimal performance
+- **Semantic Caching**: Vector-based similarity matching reduces API costs and latency
+- **Security First**: Input validation and guardrail patterns prevent abuse
+- **Cost Optimization**: Reuses cached summaries, avoiding redundant LLM calls
+- **User-Friendly UI**: Streamlit interface for easy interaction and monitoring
+- **Persistent Storage**: ChromaDB stores embeddings and metadata for reuse
+
+**Data Flow:**
+```
+RSS Sources → Async Fetch → Clean Summary → Check Cache
+                                                    ↓
+                            [Cache Hit] → Return Cached Summary
+                                    ↓
+                         [Cache Miss] → LLM Processing
+                                    ↓
+                            Store in ChromaDB → Return Result
+```
+
+**What It Does:** Aggregates real-time tech news from multiple RSS feeds, generates AI summaries with semantic caching to reduce API calls, applies security guardrails to prevent injection attacks, and provides an interactive web interface for browsing and managing cached insights
+
+---
+
 ## Requirements
 - Groq API key (stored in `.env` as `api`)
 - Dependencies in `requirements.txt`
