@@ -14,7 +14,6 @@ dotenv_path = os.path.join(current_dir, '..', '..', '.env')
 
 load_dotenv(dotenv_path=dotenv_path)
 
-
 class NewsExtractor:
     def __init__(self):
         pass
@@ -43,7 +42,6 @@ class NewsExtractor:
                     if source_name == "HackerNews":
                         summary = f"Link: {data.get('link', 'No link')}"
                     else:
-                        # Standard cleaning for TechCrunch, BBC, etc.
                         raw_summary = data.get('summary', data.get('description', ''))
                         summary = self.clean_summary(raw_summary)
                     
