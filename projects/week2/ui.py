@@ -1,6 +1,6 @@
 import streamlit as st
 import asyncio
-from main import NewsExtractor, NewsProcessor
+from day18_main import NewsExtractor, NewsProcessor
 
 st.set_page_config(page_title="OmniFeed AI", page_icon="📡", layout="wide")
 
