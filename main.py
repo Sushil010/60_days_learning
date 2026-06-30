@@ -1,7 +1,7 @@
-from pydantic import BaseModel,Field, ValidationError
-from dotenv import load_dotenv
 import os,json
+from dotenv import load_dotenv
 from groq import Groq
+from pydantic import BaseModel, Field, ValidationError
 from typing import List
 from duckduckgo_search import DDGS 
 
@@ -10,7 +10,6 @@ load_dotenv()
 
 
 tools=[
-
     {
         "type":"function",
         "function":{
@@ -31,20 +30,6 @@ tools=[
    
 ]
 
-
-class ResearcherOutput(BaseModel):
-    title:str
-    body:List[str]=Field(description="3-5 verified facts about the topic")
-    sources:List[str]=Field(description="URLs or references for the facts")
-
-class WriterPost(BaseModel):
-    hook:str=Field(description="First line that grabs attention")
-    body:str=Field(description="Main content, 3-4 short paragraphs")
-    hashtags:List[str]=Field(description="3-5 relevant hashtags")
-
-
-
-
 def search_web(query:str):
     print(f"searching with given Topic: {query}")
     try:
@@ -57,6 +42,20 @@ def search_web(query:str):
             return output
     except Exception as e:
         return f"Search Failed: {e}"
+
+class ResearcherOutput(BaseModel):
+    title:str
+    body:List[str]=Field(description="3-5 verified facts about the topic")
+    sources:List[str]=Field(description="URLs or references for the facts")
+
+class WriterOutput(BaseModel):
+    hook:str=Field(description="First line that grabs attention")
+    body:str=Field(description="Main content, 3-4 short paragraphs")
+    hashtags:List[str]=Field(description="3-5 relevant hashtags")
+
+class CritiqueOutput(BaseModel):
+    approval:bool=Field(description="True if post is perfect, False if the output needs changes")
+    feedback:List[str]=Field(description="Any 2 or 3 reasons why it was disapproved.Empty list if approved.")
 
 
 class ResearcherAgent:
@@ -119,41 +118,112 @@ class WriterAgent:
     def __init__(self):
         self.client = Groq(api_key=os.getenv('api'))
 
-    def run(self, research_json: str) -> str:
-        print(f"\n[Writer] Writing post based on research...")
+    def run(self, facts_json: str, feedback_json: str = None):
+        writer_schema = json.dumps(WriterOutput.model_json_schema(), indent=2)
+
+        prompt_content = f"Here are the research facts:\n{facts_json}\n\n"
+        if feedback_json:
+            prompt_content += f"The previous draft was rejected. Here is the Critic's feedback:\n{feedback_json}\n\n"
         
-        schema_str = json.dumps(WriterPost.model_json_schema(), indent=2)
+        prompt_content += "Write a viral LinkedIn post based on this. Output ONLY raw JSON matching the schema."
 
         messages = [
-            {"role": "system", "content": f"""You are a viral LinkedIn ghostwriter.
-            Take the provided research facts and write an engaging post.
-            Output a JSON object matching this schema:
-            {schema_str}
-            Return ONLY raw JSON."""},
-            {"role": "user", "content": f"Here is the research data: {research_json}"} 
+            {
+                "role": "system",
+                "content": f"You are a viral LinkedIn ghostwriter. Output a JSON object matching this schema:\n{writer_schema}"
+            },
+            {
+                "role": "user",
+                "content": prompt_content 
+            }
         ]
-        
-        response=self.client.chat.completions.create(
+
+        response = self.client.chat.completions.create(
             messages=messages,
             model="llama-3.3-70b-versatile",
             response_format={"type": "json_object"}
         )
-        return response.choices[0].message.content
         
+        content = response.choices[0].message.content
+        if isinstance(content, (dict, list)):
+            return content
+        try:
+            return json.loads(content)
+        except Exception:
+            return content 
+
+
+
+
+class CritiqueAgent:
+    def __init__(self):
+        self.client = Groq(api_key=os.getenv('api'))
+
+    def run(self, facts_json: str, draft_json: str):
+        critique_schema = json.dumps(CritiqueOutput.model_json_schema(), indent=2)
+
+        messages = [
+            {
+                "role": "system",
+                "content": f"""You are a strict editor. You will be given research facts and a LinkedIn post draft.
+                Your job is to check if the draft accurately uses the facts and is engaging.
+                Output a JSON object matching this schema:
+                {critique_schema}
+                If it's perfect, approved=True. If it misses facts or is boring, approval=False and give specific feedback."""
+            },
+            {
+                "role": "user",
+                "content": f"RESEARCH FACTS:\n{facts_json}\n\nDRAFT POST:\n{draft_json}"
+            }
+        ]
+
+        response = self.client.chat.completions.create(
+            messages=messages,
+            model="llama-3.3-70b-versatile",
+            response_format={"type": "json_object"}
+        )
+        
+        raw_json = response.choices[0].message.content
+        if isinstance(raw_json, (dict, list)):
+            return CritiqueOutput.model_validate(raw_json)
+        return CritiqueOutput.model_validate_json(raw_json) 
+
+
+class MainLoop:
+    def __init__(self):
+        self.researcher = ResearcherAgent() 
+        self.writer = WriterAgent()
+        self.critic = CritiqueAgent()
+
+    def run_pipeline(self, topic: str, max_retries: int = 4):
+        print(f"[Researcher] Finding facts for: {topic}")
+        facts_obj = self.researcher.run(topic)
+        facts_json = facts_obj.model_dump_json()
+        
+        feedback_json = None 
+        
+        for attempt in range(max_retries + 1):
+            print(f"\n[Writer] Writing Draft {attempt + 1}...")
+            draft_json = self.writer.run(facts_json, feedback_json)
+            
+            print(f"[Critic] Reviewing Draft {attempt + 1}...")
+            critique_obj = self.critic.run(facts_json, draft_json)
+            
+            if critique_obj.approval:
+                print("[Critic] APPROVED! The post is perfect.")
+                return draft_json 
+            else:
+                print(f" [Critic] REJECTED. Feedback: {critique_obj.feedback}")
+                feedback_json = critique_obj.model_dump_json() 
+                
+        print("Max retries reached. Returning the last draft anyway.")
+        return draft_json
+
 
 if __name__ == "__main__":
-    researcher = ResearcherAgent()
-    writer = WriterAgent()
-    
-    topic = "The impact of Agentic RAG on software development"
-    
-    facts_obj = researcher.run(topic)
-    facts_json = facts_obj.model_dump_json() 
-    final_post_json = writer.run(facts_json)
-    
-    # Step 3: Parse and print
-    post = WriterPost.model_validate_json(final_post_json)
-    print("\n" + "="*50)
-    print(f" HOOK: {post.hook}")
-    print(f"\n{post.body}")
-    print(f"\nTAGS: {' '.join(post.hashtags)}")
+    draft = MainLoop().run_pipeline("Generative AI and it's applications")
+    print("\n=== Final Draft ===")
+    if isinstance(draft, (dict, list)):
+        print(json.dumps(draft, indent=2, ensure_ascii=False))
+    else:
+        print(draft)
