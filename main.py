@@ -1,229 +1,94 @@
-import os,json
+import os
+import json
+import uuid
+import chromadb
 from dotenv import load_dotenv
 from groq import Groq
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
 from typing import List
-from duckduckgo_search import DDGS 
+from datetime import datetime
+from collections import deque
 
 load_dotenv()
 
 
-
-tools=[
-    {
-        "type":"function",
-        "function":{
-            "name":"search_web",
-            "description":"",
-            "parameters":{
-                "type":"object",
-                "properties":{
-                    "query":{
-                        "type":"string",
-                        "description":""
-                    }
-                },
-                "required":["query"]
-            }
-        }
-    },
-   
-]
-
-def search_web(query:str):
-    print(f"searching with given Topic: {query}")
-    try:
-        with DDGS() as ddgs:
-            result=ddgs.text(query,max_results=3)
-            if not result:
-                return "No result found"
-            output=[f"[{i+1}] {r['title']}\nURL: {r['href']}\nSnippet: {r['body']}" for i,r in enumerate(result)]
-            output="\n\n".join(output)
-            return output
-    except Exception as e:
-        return f"Search Failed: {e}"
-
-class ResearcherOutput(BaseModel):
-    title:str
-    body:List[str]=Field(description="3-5 verified facts about the topic")
-    sources:List[str]=Field(description="URLs or references for the facts")
-
-class WriterOutput(BaseModel):
-    hook:str=Field(description="First line that grabs attention")
-    body:str=Field(description="Main content, 3-4 short paragraphs")
-    hashtags:List[str]=Field(description="3-5 relevant hashtags")
-
-class CritiqueOutput(BaseModel):
-    approval:bool=Field(description="True if post is perfect, False if the output needs changes")
-    feedback:List[str]=Field(description="Any 2 or 3 reasons why it was disapproved.Empty list if approved.")
+class HighlightItem(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    text: str = Field(description="The actual text highlighted on screen")
+    app_name: str = Field(description="The app where it was highlighted, e.g., 'VS Code', 'Chrome'")
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
-class ResearcherAgent:
-    def __init__(self):
-        self.client=Groq(api_key=os.getenv('api'))
 
-    def run(self,topic):
-        schema_str=json.dumps(ResearcherOutput.model_json_schema(),indent=2)
-        
-        messages = [
-            {"role": "system", "content": f"""You are an expert researcher. 
-            Use the search_web tool to find facts about the topic. 
-            Once you have enough info, output a JSON object matching this schema:
-            {schema_str}
-            Return ONLY raw JSON."""},
-
-            {"role": "user", "content": topic}
-        ]
-
-        while True:
-            response=self.client.chat.completions.create(
-                messages=messages,
-                tool_choice="auto",
-                tools=tools,
-                model="llama-3.3-70b-versatile"
-            )
-
-            resp=response.choices[0].message
-            messages.append(resp)
-
-            if not resp.tool_calls:
-                raw_content = resp.content or ""
-                print("Raw response:", raw_content)
-                try:
-                    return ResearcherOutput.model_validate_json(raw_content)
-                except ValidationError as exc:
-                    print("Structured validation failed. The model returned invalid JSON for DecisionModel.")
-                    raise exc
-
-            for tool_call in resp.tool_calls:
-                function_name=tool_call.function.name
-                tool_args=json.loads(tool_call.function.arguments) if tool_call.function.arguments else {}
-                print(f"Calling tool: {function_name} with args: {tool_args}")
-
-                if function_name=="search_web":
-                    result=search_web(**tool_args)
-                else:
-                    result={"error": "Unknown tool"}
-
-                messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "name": function_name,
-                        "content": str(result)
-                    })
-            
+class PointerMemory:
+    def __init__(self,stm_capacity:int=5):
+        api_key = os.getenv("api")
+        if not api_key:
+            raise ValueError("Missing Groq API key. Set GROQ_API_KEY in your environment or in a .env file.")
+        self.client = Groq(api_key=api_key)
 
 
-class WriterAgent:
-    def __init__(self):
-        self.client = Groq(api_key=os.getenv('api'))
+        self.stm_capacity=stm_capacity
+        self.short_term_memory = deque(maxlen=stm_capacity)
 
-    def run(self, facts_json: str, feedback_json: str = None):
-        writer_schema = json.dumps(WriterOutput.model_json_schema(), indent=2)
-
-        prompt_content = f"Here are the research facts:\n{facts_json}\n\n"
-        if feedback_json:
-            prompt_content += f"The previous draft was rejected. Here is the Critic's feedback:\n{feedback_json}\n\n"
-        
-        prompt_content += "Write a viral LinkedIn post based on this. Output ONLY raw JSON matching the schema."
-
-        messages = [
-            {
-                "role": "system",
-                "content": f"You are a viral LinkedIn ghostwriter. Output a JSON object matching this schema:\n{writer_schema}"
-            },
-            {
-                "role": "user",
-                "content": prompt_content 
-            }
-        ]
-
-        response = self.client.chat.completions.create(
-            messages=messages,
-            model="llama-3.3-70b-versatile",
-            response_format={"type": "json_object"}
+        self.chroma_client = chromadb.Client()
+        self.long_term_collection = self.chroma_client.get_or_create_collection(
+            name="pointer_long_term_memory",
+            metadata={"hnsw:space": "cosine"} 
         )
+        print(f"[Memory] Ready! STM Capacity: {stm_capacity}")
+
+    def add_highlight(self, text: str, app_name: str):
+        print(f"\n[User] Highlighted text in {app_name}: '{text[:30]}...'")
         
-        content = response.choices[0].message.content
-        if isinstance(content, (dict, list)):
-            return content
-        try:
-            return json.loads(content)
-        except Exception:
-            return content 
-
-
-
-
-class CritiqueAgent:
-    def __init__(self):
-        self.client = Groq(api_key=os.getenv('api'))
-
-    def run(self, facts_json: str, draft_json: str):
-        critique_schema = json.dumps(CritiqueOutput.model_json_schema(), indent=2)
-
-        messages = [
-            {
-                "role": "system",
-                "content": f"""You are a strict editor. You will be given research facts and a LinkedIn post draft.
-                Your job is to check if the draft accurately uses the facts and is engaging.
-                Output a JSON object matching this schema:
-                {critique_schema}
-                If it's perfect, approved=True. If it misses facts or is boring, approval=False and give specific feedback."""
-            },
-            {
-                "role": "user",
-                "content": f"RESEARCH FACTS:\n{facts_json}\n\nDRAFT POST:\n{draft_json}"
-            }
-        ]
-
-        response = self.client.chat.completions.create(
-            messages=messages,
-            model="llama-3.3-70b-versatile",
-            response_format={"type": "json_object"}
+        new_item = HighlightItem(text=text, app_name=app_name)
+        
+        if len(self.short_term_memory) == self.stm_capacity:
+            oldest_item = self.short_term_memory[0] 
+            self._save_to_long_term(oldest_item)
+            print(f"[Memory] STM Full. Moving '{oldest_item.text[:20]}' to Long-Term DB.")
+        self.short_term_memory.append(new_item)
+    
+    def _save_to_long_term(self, item: HighlightItem):
+        self.long_term_collection.add(
+            documents=[item.text],
+            metadatas=[{"app_name": item.app_name, "timestamp": item.timestamp}],
+            ids=[item.id]
         )
-        
-        raw_json = response.choices[0].message.content
-        if isinstance(raw_json, (dict, list)):
-            return CritiqueOutput.model_validate(raw_json)
-        return CritiqueOutput.model_validate_json(raw_json) 
 
+    def get_recent_context(self):
+        """Returns the current Short-Term Memory (for the LLM prompt)."""
+        return [item.model_dump() for item in self.short_term_memory]
 
-class MainLoop:
-    def __init__(self):
-        self.researcher = ResearcherAgent() 
-        self.writer = WriterAgent()
-        self.critic = CritiqueAgent()
-
-    def run_pipeline(self, topic: str, max_retries: int = 4):
-        print(f"[Researcher] Finding facts for: {topic}")
-        facts_obj = self.researcher.run(topic)
-        facts_json = facts_obj.model_dump_json()
-        
-        feedback_json = None 
-        
-        for attempt in range(max_retries + 1):
-            print(f"\n[Writer] Writing Draft {attempt + 1}...")
-            draft_json = self.writer.run(facts_json, feedback_json)
-            
-            print(f"[Critic] Reviewing Draft {attempt + 1}...")
-            critique_obj = self.critic.run(facts_json, draft_json)
-            
-            if critique_obj.approval:
-                print("[Critic] APPROVED! The post is perfect.")
-                return draft_json 
-            else:
-                print(f" [Critic] REJECTED. Feedback: {critique_obj.feedback}")
-                feedback_json = critique_obj.model_dump_json() 
-                
-        print("Max retries reached. Returning the last draft anyway.")
-        return draft_json
-
-
+    def search_past_memory(self, query: str, n_results: int = 2):
+        """Searches Long-Term Memory for past highlights."""
+        print(f"\n🔍 [Memory] Searching past history for: '{query}'")
+        results = self.long_term_collection.query(
+            query_texts=[query],
+            n_results=n_results
+        )
+        return results
+    
 if __name__ == "__main__":
-    draft = MainLoop().run_pipeline("Generative AI and it's applications")
-    print("\n=== Final Draft ===")
-    if isinstance(draft, (dict, list)):
-        print(json.dumps(draft, indent=2, ensure_ascii=False))
+    memory = PointerMemory(stm_capacity=3)
+
+    memory.add_highlight("def calculate_revenue():", "VS Code")
+    memory.add_highlight("The Q3 earnings report shows a 15% increase.", "Chrome")
+    memory.add_highlight("Error 500: Internal Server Error at /api/login", "Terminal")
+
+    memory.add_highlight("Meeting notes: Discuss AI Pointer architecture.", "Notion")
+
+    print("\n" + "="*50)
+    print("CURRENT SHORT-TERM MEMORY (What the AI sees right now):")
+    for item in memory.get_recent_context():
+        print(f" - [{item['app_name']}] {item['text']}")
+
+    print("\n" + "="*50)
+    search_results = memory.search_past_memory("code function python")
+    
+    print("LONG-TERM MEMORY SEARCH RESULTS:")
+    if search_results['documents'][0]:
+        for doc in search_results['documents'][0]:
+            print(f" - Found: {doc}")
     else:
-        print(draft)
+        print(" - Nothing found in long-term history.")
