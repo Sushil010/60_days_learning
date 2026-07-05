@@ -5,3 +5,4 @@ my_cache_db
 *__pycache__
 news_storage/
 *.txt
+*.png
