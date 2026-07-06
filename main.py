@@ -1,244 +1,303 @@
-import mouse,os,json, base64
-import time
-import mss
-from PIL import Image
+import os,json
+from pathlib import Path
 from groq import Groq
 from dotenv import load_dotenv
-from pydantic import BaseModel,Field
-from typing import List
-from duckduckgo_search import DDGS
-
-
-FRAME_SIZE =   750
-TRIPLE_CLICK_WINDOW = 0.5  
-click_times = []  
+import chromadb
 
 load_dotenv()
-class MouseEvent:
-    def __init__(self):
-        self.last_captured_image = None
 
-    def is_triple_click(self):
-        now = time.time()
-        
-        click_times[:] = [t for t in click_times if now - t < TRIPLE_CLICK_WINDOW]
-        
-        if len(click_times) >= 3:
-            click_times.clear()  
-            return True
-        return False
 
-    def on_click(self):
-        now = time.time()
-        click_times.append(now)
-        
-        if self.is_triple_click():
-            print("\nTriple-click detected!")
-            self.capture_frame()
-
-    def capture_frame(self):
-        x, y = mouse.get_position()
-        print(f"📍 Cursor at: ({x}, {y})")
-        
-        left = max(0, x - FRAME_SIZE // 2)
-        top = max(0, y - FRAME_SIZE // 2)
-        
-        monitor = {
-            "left": left,
-            "top": top,
-            "width": FRAME_SIZE,
-            "height": FRAME_SIZE
+class DirectoryScanner:
+    def __init__(self,root_path):
+        # self.client=Groq(api_key=os.getenv('api'))
+        self.root_path=root_path
+        self.ignore_patterns = {
+            '.git', '__pycache__', 'node_modules', '.venv', 'venv',
+            '.idea', '.vscode', 'dist', 'build', '.next', '.cache'
         }
         
-        with mss.MSS() as sct:
-            screenshot = sct.grab(monitor)
-            
-            img = Image.frombytes("RGB", screenshot.size, screenshot.bgra, "raw", "BGRX")
-            
-            filename = f"capture_{int(time.time())}.png"
-            img.save(filename)
-            self.last_captured_image = filename
-            print(f"Saved as: {filename}")
-            return filename
-            
-
-
-
-tools=[
-    {
-        "type":"function",
-        "function":{
-            "name":"search_web",
-            "description":"Search the web for information about the image content",
-            "parameters":{
-                "type":"object",
-                "properties":{
-                    "query":{
-                        "type":"string",
-                        "description":"The search query to look up on the web"
-                    }
-                },
-                "required":["query"]
-            }
+        self.supported_extensions = {
+            '.py', '.md', '.txt', '.json', '.yaml', '.yml',
+            '.js', '.ts', '.jsx', '.tsx', '.html', '.css'
         }
+    
+    def scan(self):
+        files=[]
+        for root,dirs,filenames in os.walk(self.root_path):
+            dirs[:]=[d for d in dirs if d not in self.ignore_patterns]
 
-    }
-]
+            for filename in filenames:
+                file_path=Path(root)/filename
+            
+                if file_path.suffix not in self.supported_extensions:
+                    continue
 
-def search_web(query):
-        print(f"Tool is searching for the query: {query}")
+                stat=file_path.stat()
+
+                files.append({
+                    'file_path':str(file_path),
+                    'file_type': file_path.suffix,
+                    'size': stat.st_size,
+                    'modified_time': stat.st_mtime
+                })
+            
+        print(f"Found {len(files)} files to index")
+        return files
+class VectorStore:
+    def __init__(self, db_path: str = "./local_rag_db", collection_name: str = "codebase"):
+        print("Initializing Vector Store...")
+        self.client = chromadb.PersistentClient(path=db_path)
+        self.collection = self.client.get_or_create_collection(
+            name=collection_name,
+            metadata={"hnsw:space": "cosine"}
+        )
+        print(f"Connected to collection: '{collection_name}' ({self.collection.count()} chunks)")
+
+    def add_chunks(self, chunks: list):
+        if not chunks:
+            return
+
+        ids, documents, metadatas = [], [], []
+
+        for chunk in chunks:
+            chunk_id = f"{chunk['file_path']}:{chunk['line_start']}"
+            ids.append(chunk_id)
+            documents.append(chunk['content'])  
+            metadatas.append({
+                "file_path": chunk['file_path'],
+                "line_start": int(chunk['line_start']),
+                "line_end": int(chunk['line_end']),
+                "file_type": chunk.get('file_type', 'unknown')
+            })
+
+        self.collection.upsert(ids=ids, documents=documents, metadatas=metadatas)
+        print(f"Stored {len(chunks)} code chunks")
+
+    def query(self, query_text: str, n_results: int = 3):
+        if self.collection.count() == 0:
+            return []
+
+        results = self.collection.query(
+            query_texts=[query_text],
+            n_results=n_results
+        )
+
+        formatted_results = []
+        for i in range(len(results['ids'][0])):
+            formatted_results.append({
+                'content': results['documents'][0][i],
+                'file_path': results['metadatas'][0][i]['file_path'],
+                'line_start': results['metadatas'][0][i]['line_start'],
+                'line_end': results['metadatas'][0][i]['line_end'],
+                'distance': results['distances'][0][i]
+            })
+        return formatted_results
+
+class Fileloader:
+    @staticmethod
+    def load(file_path):
         try:
-            with DDGS() as ddgs:
-                results=ddgs.text(query,max_results=5)
-                output=[]
-                for index, value in enumerate(results):
-                    output.append(f"[{index+1}] Title: {value['title']}\nURL:{value['href']}\nBody: {value['body']}\n ")
-                return "\n".join(output)
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return f.read()
+                
+        except UnicodeDecodeError:
+            try:
+                with open(file_path, 'r', encoding='latin-1') as f:
+                    return f.read()
+            except Exception:
+                print(f"Encoding failed for: {file_path}")
+                return ""
+                
+        except PermissionError:
+            print(f"Permission denied: {file_path}")
+            return ""
+            
         except Exception as e:
-            return f"Search failed: {e}"
+            print(f"Error reading {file_path}: {e}")
+            return ""
 
 
-class ImageAnalysis(BaseModel):
-    description: str = Field(description="Detailed description of what's in the image (2-3 sentences)")
-    content_type: str = Field(description="Type of content: 'text', 'image', 'chart', 'code', 'ui_element', 'mixed'")
-    key_elements: List[str] = Field(description="List of important elements visible in the image")
+class SmartChunker:
+    @staticmethod
+    def chunk_code(content: str, file_path: str):
+        chunks = []
+        lines = content.split('\n')
+        
+        current_chunk = []
+        chunk_start = 0
+        
+        for i, line in enumerate(lines):
+            current_chunk.append(line)
+            stripped = line.strip()
+            is_boundary = (
+                stripped.startswith('def ') or
+                stripped.startswith('class ') or
+                stripped.startswith('async def ')
+            )
+            
 
-
-class VisionModel:
-    def __init__(self):
-        self.client=Groq(api_key=os.getenv('api'))
+            if is_boundary and len(current_chunk) >= 20:
+                chunk_content = '\n'.join(current_chunk)
+                chunks.append({
+                    'content': chunk_content,
+                    'file_path': file_path,
+                    'line_start': chunk_start + 1, 
+                    'line_end': i + 1
+                })
+                # Reset for next chunk
+                current_chunk = []
+                chunk_start = i + 1
+        
+        if current_chunk:
+            chunk_content = '\n'.join(current_chunk)
+            chunks.append({
+                'content': chunk_content,
+                'file_path': file_path,
+                'line_start': chunk_start + 1,
+                'line_end': len(lines)
+            })
+        
+        return chunks
     
-
+    @staticmethod
+    def chunk_text(content: str, file_path: str, chunk_size: int = 500):
+        chunks = []
+        lines = content.split('\n')
+        
+        current_chunk = []
+        chunk_start = 0
+        char_count = 0
+        
+        for i, line in enumerate(lines):
+            current_chunk.append(line)
+            char_count += len(line)
+            
+            if char_count >= chunk_size:
+                chunk_content = '\n'.join(current_chunk)
+                chunks.append({
+                    'content': chunk_content,
+                    'file_path': file_path,
+                    'line_start': chunk_start + 1,
+                    'line_end': i + 1
+                })
+                current_chunk = []
+                chunk_start = i + 1
+                char_count = 0
+        
+        if current_chunk:
+            chunk_content = '\n'.join(current_chunk)
+            chunks.append({
+                'content': chunk_content,
+                'file_path': file_path,
+                'line_start': chunk_start + 1,
+                'line_end': len(lines)
+            })
+        
+        return chunks
     
-    def visioncall(self,image_path:str,user_query:str):
-        schema_str=json.dumps(ImageAnalysis.model_json_schema(),indent=2)
-        base64_image = self.image_to_base64(image_path)
-        messages=[
+    @staticmethod
+    def chunk(file_path: str, content: str):
+
+        path = Path(file_path)
+        
+        if path.suffix in {'.py', '.js', '.ts', '.jsx', '.tsx'}:
+            return SmartChunker.chunk_code(content, file_path)
+        else:
+            return SmartChunker.chunk_text(content, file_path)
+
+
+class LocalRAG:
+    def __init__(self, root_path: str):
+        self.root_path = root_path
+        self.scanner = DirectoryScanner(root_path)
+        self.loader = Fileloader()  
+        self.chunker = SmartChunker()  
+        self.store = VectorStore()
+        self.llm_client = Groq(api_key=os.getenv('api'))
+
+    def index_project(self):
+        print(f"\nIndexing project: {self.root_path}")
+        files = self.scanner.scan()
+        
+        all_chunks = []
+        for file_info in files:
+            file_path = file_info['file_path']
+            content = self.loader.load(file_path)
+            
+            if content:
+                chunks = self.chunker.chunk(file_path, content)
+                for c in chunks:
+                    c['file_type'] = file_info['file_type']
+                all_chunks.extend(chunks)
+                
+        print(f"Generated {len(all_chunks)} chunks")
+        self.store.add_chunks(all_chunks)
+        print("Indexing complete!\n")
+
+    def ask(self, question: str) -> str:
+        print(f"Searching for: '{question}'")
+        
+        results = self.store.query(question, n_results=3)
+        
+        if not results:
+            return "No relevant code found. Did you run index_project() first?"
+
+        context_str = ""
+        for i, res in enumerate(results, 1):
+            context_str += f"\n--- [Source {i}: {res['file_path']} (Lines {res['line_start']}-{res['line_end']})] ---\n"
+            context_str += res['content'] + "\n"
+
+        messages = [
             {
                 "role": "system",
-                "content": f"""You are an image analysis AI. Analyze the provided image and return only a JSON object matching this schema:
-
-{schema_str}
-
-Do not include any extra text, markdown, or commentary. Be detailed and accurate."""
+                "content": """You are an expert AI coding assistant. 
+                Answer based ONLY on the provided code context.
+                Cite sources using [Source X] format.
+                If answer not in context, say "I don't have enough information."
+                Be concise and technical."""
             },
             {
                 "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": f"User's question: {user_query}"
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/png;base64,{base64_image}"
-                        }
-                    }
-                ]
+                "content": f"""Question: {question}
+
+Context:
+{context_str}
+
+Provide answer with source citations."""
             }
         ]
 
-        while True:
-            completions=self.client.chat.completions.create(
+        try:
+            response = self.llm_client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
                 messages=messages,
-                model="meta-llama/llama-4-scout-17b-16e-instruct",
-                response_format={"type": "json_object"},
-                max_tokens=1000,
                 temperature=0.2
             )
-
-            reply=completions.choices[0].message
-            messages.append(reply)
-
-            content = reply.content or "{}"
-            try:
-                return ImageAnalysis.model_validate_json(content)
-            except Exception as e:
-                print(f"Could not parse response as ImageAnalysis: {e}")
-                return ImageAnalysis(
-                    description=str(content),
-                    content_type="image",
-                    key_elements=[]
-                )
-    
-    def image_to_base64(self, image_path: str) -> str:
-        with open(image_path, "rb") as img_file:
-            return base64.b64encode(img_file.read()).decode('utf-8')
-    
-
-
-class VisionAgent:
-    def __init__(self):
-        self.mouse_event = MouseEvent()
-        self.vision_model = VisionModel()
-        self.current_image = None  
-    
-    def start(self):
-        mouse.on_click(self.mouse_event.on_click)
+            return response.choices[0].message.content
+        except Exception as e:
+            return f"LLM Error: {e}"
         
-        try:
-            while True:
-                time.sleep(0.1)
-                
-                if self.mouse_event.last_captured_image:
-                    self.current_image = self.mouse_event.last_captured_image
-                    self.mouse_event.last_captured_image = None  
-                    
-                    self.analyze_and_interact()
-                    
-        except KeyboardInterrupt:
-            print("\n\nStopped")
-    
-    def analyze_and_interact(self):
-        """Analyze the captured image and start interactive Q&A"""
-        if not self.current_image:
-            return
-        
-        print(f"\nAnalyzing captured image: {self.current_image}")
-        
-        initial_question = "What's in this image? Provide a detailed description."
-        analysis = self.vision_model.visioncall(self.current_image, initial_question)
-        
-        print("\n" + "="*60)
-        print("INITIAL ANALYSIS")
-        print("="*60)
-        print(f"Description: {analysis.description}")
-        print(f"Content Type: {analysis.content_type}")
-        print(f"Key Elements: {', '.join(analysis.key_elements)}")
-        print("="*60)
-        
-        self.interactive_loop()
-    
-    def interactive_loop(self):
-
-        print("\nYou can now ask follow-up questions about this image.")
-        print("   Type 'exit' to stop, or triple-click to capture a new image.\n")
-        
-        while True:
-            try:
-                user_question = input("You: ").strip()
-                
-                if user_question.lower() in ['exit', 'quit', 'q']:
-                    print("Exiting interactive mode.")
-                    break
-                
-                if not user_question:
-                    continue
-                
-                print("\nThinking...")
-                analysis = self.vision_model.visioncall(self.current_image, user_question)
-                
-                # Show the answer
-                print(f"\nAnswer: {analysis.description}")
-                if analysis.key_elements:
-                    print(f"Key Points: {', '.join(analysis.key_elements)}")
-                print()
-                
-            except KeyboardInterrupt:
-                print("\n\nExiting interactive mode.")
-                break
 
 if __name__ == "__main__":
-    agent = VisionAgent()
-    agent.start()
+    PROJECT_PATH = "."
+
+    rag = LocalRAG(PROJECT_PATH)
+
+    rag.index_project()
+
+    print("="*60)
+    print("ASK QUESTIONS (type 'exit' to quit)")
+    print("="*60)
+
+    while True:
+        question = input("\nYou: ").strip()
+        
+        if question.lower() in ['exit', 'quit', 'q']:
+            break
+        
+        if not question:
+            continue
+        
+        print("\nThinking...")
+        answer = rag.ask(question)
+        print(f"\nAnswer:\n{answer}")
