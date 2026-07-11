@@ -1,19 +1,32 @@
-from PySide6.QtCore import QObject, Signal
-import threading, time
+import asyncio, sys
+from PySide6.QtWidgets import QApplication
+import qasync
+from overlay import OverlayWindow
+from uitray import TrayManager
+from listner import HotkeyListener  
 
+async def async_main():
+    overlay = OverlayWindow()
+    tray = TrayManager(overlay)
+    tray.show()
 
-class HotkeySignal(QObject):
-    hotkey_pressed = Signal(int, int) 
+    hotkey = HotkeyListener()
+    hotkey.hotkey_triggered.connect(
+        lambda x, y: overlay.show_at(x, y, "Listening")
+    )
+    hotkey.start()
 
-signaler = HotkeySignal()
+    print("OmniCursor running. Press Ctrl+Space anywhere.")
+    while True:
+        await asyncio.sleep(1)
 
-def on_hotkey_pressed(x, y):
-    print(f"Main thread got it Cursor was at ({x}, {y})")
+def main():
+    app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)
+    loop = qasync.QEventLoop(app)
+    asyncio.set_event_loop(loop)
+    with loop:
+        loop.run_until_complete(async_main())
 
-signaler.hotkey_pressed.connect(on_hotkey_pressed)  
-def fake_hotkey_listener():
-    time.sleep(2)  
-    print("Thread A: hotkey detected, shouting now")
-    signaler.hotkey_pressed.emit(500, 300)  
-
-threading.Thread(target=fake_hotkey_listener, daemon=True).start()
+if __name__ == "__main__":
+    main()
