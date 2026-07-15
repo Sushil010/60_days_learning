@@ -18,6 +18,7 @@ class ContextBundle:
     should_use_vision: bool
     cursor_x: int
     cursor_y: int
+    language: Optional[str] = None
 
 
 def needs_vision(ui_text: str):
@@ -34,7 +35,7 @@ async def gather_context(cursor_x: int, cursor_y: int):
 
     screenshot_bytes = capture_region(cursor_x, cursor_y) if vision_needed else None
 
-    return ContextBundle(
+    ctx= ContextBundle(
         app_name=app_info["name"],
         window_title=app_info["title"],
         ui_text=ui_text,
@@ -44,3 +45,8 @@ async def gather_context(cursor_x: int, cursor_y: int):
         cursor_x=cursor_x,
         cursor_y=cursor_y,
     )
+
+    from app_profiles import apply_profile  
+    ctx = apply_profile(ctx)
+
+    return ctx

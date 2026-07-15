@@ -21,6 +21,7 @@ async def async_main():
         print(f"Window: {ctx.window_title}")
         print(f"UI text: {ctx.ui_text[:100]}")
         print(f"Control type: {ctx.control_type}")
+        print(f"Language: {ctx.language}")
         print(f"Using vision: {ctx.should_use_vision}")
         if ctx.screenshot_bytes:
             print(f"Screenshot size: {len(ctx.screenshot_bytes)} bytes")
