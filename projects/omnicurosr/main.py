@@ -5,7 +5,7 @@ import qasync
 from overlay import OverlayWindow
 from uitray import TrayManager
 from listner import HotkeyListener
-from context import gather_context   
+from context import gather_context
 
 async def async_main():
     overlay = OverlayWindow()
@@ -15,7 +15,7 @@ async def async_main():
     hotkey = HotkeyListener()
 
     async def on_hotkey(x, y):
-        ctx = await gather_context(x, y)   
+        ctx = await gather_context(x, y)
 
         print(f"App: {ctx.app_name}")
         print(f"Window: {ctx.window_title}")
@@ -25,6 +25,11 @@ async def async_main():
         print(f"Using vision: {ctx.should_use_vision}")
         if ctx.screenshot_bytes:
             print(f"Screenshot size: {len(ctx.screenshot_bytes)} bytes")
+
+        t = ctx.timing                                                     
+        print(f"Timing: app={t['app_detect']}ms | uia={t['uia_read']}ms | "  
+              f"screenshot={t['screenshot']}ms | profile={t['profile']}ms | "
+              f"TOTAL={t['total']}ms")                                      
 
         mode = "vision" if ctx.should_use_vision else "text"
         overlay.show_at(x, y, f"{ctx.app_name} · {mode}")

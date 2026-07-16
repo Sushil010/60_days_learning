@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+import time                                          
+from dataclasses import dataclass, field            
 from typing import Optional
 
 from app_detect import get_active_app
@@ -19,6 +20,7 @@ class ContextBundle:
     cursor_x: int
     cursor_y: int
     language: Optional[str] = None
+    timing: dict = field(default_factory=dict)       
 
 
 def needs_vision(ui_text: str):
@@ -26,16 +28,21 @@ def needs_vision(ui_text: str):
 
 
 async def gather_context(cursor_x: int, cursor_y: int):
+    t0 = time.perf_counter()                          
+
     app_info = get_active_app()
+    t1 = time.perf_counter()                          
+
     ui_data = await read_ui_text(cursor_x, cursor_y)
+    t2 = time.perf_counter()                          
 
     ui_text = ui_data.get("text", "")
     vision_needed = needs_vision(ui_text)
 
-
     screenshot_bytes = capture_region(cursor_x, cursor_y) if vision_needed else None
+    t3 = time.perf_counter()                          
 
-    ctx= ContextBundle(
+    ctx = ContextBundle(
         app_name=app_info["name"],
         window_title=app_info["title"],
         ui_text=ui_text,
@@ -46,7 +53,15 @@ async def gather_context(cursor_x: int, cursor_y: int):
         cursor_y=cursor_y,
     )
 
-    from app_profiles import apply_profile  
+    from app_profiles import apply_profile
     ctx = apply_profile(ctx)
+    t4 = time.perf_counter()                         
+    ctx.timing = {                                     
+        "app_detect": round((t1 - t0) * 1000, 1),
+        "uia_read": round((t2 - t1) * 1000, 1),
+        "screenshot": round((t3 - t2) * 1000, 1),
+        "profile": round((t4 - t3) * 1000, 1),
+        "total": round((t4 - t0) * 1000, 1),
+    }
 
     return ctx
