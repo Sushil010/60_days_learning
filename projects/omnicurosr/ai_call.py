@@ -1,17 +1,18 @@
 import os
 from dotenv import load_dotenv
-from groq import Groq
+from groq import AsyncGroq          
 from context import ContextBundle
 
 load_dotenv()
 
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))   
 
 MODEL_NAME = "qwen/qwen3.6-27b"
 
 SYSTEM_PROMPT = """You are a system-wide AI assistant embedded at the user's mouse cursor.
 You are given the app name, window title, and the text currently under the cursor.
-Give a short, useful answer about what you see. Be concise: 2-3 sentences max, no preamble."""
+Give a short, useful answer about what you see. Be concise: 2-3 sentences max.
+Do not show your reasoning steps or thinking process - respond with ONLY the final answer, directly."""
 
 
 def build_user_message(ctx: ContextBundle):
@@ -23,25 +24,27 @@ Text under cursor:
 
 Briefly explain or summarize what's here."""
 
-def llm_call(ctx: ContextBundle):
+
+async def llm_call(ctx: ContextBundle, overlay):        
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": build_user_message(ctx)},
     ]
 
-    response = client.chat.completions.create(
-        messages=messages,
-        model=MODEL_NAME,
-    )
+    try:
+        stream = await client.chat.completions.create(
+            messages=messages,
+            model=MODEL_NAME,
+            stream=True
+        )
+        overlay.response_view.clear()
+        async for chunk in stream:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                overlay.token_received.emit(delta)
 
-    return response.choices[0].message.content
+        overlay.stream_finished.emit()
 
-if __name__ == "__main__":
-    import asyncio
-    from context import gather_context
+    except Exception as e:
+        overlay.stream_error.emit(str(e))
 
-    async def test():
-        ctx = await gather_context(500, 500)   
-        print(llm_call(ctx))
-
-    asyncio.run(test())
