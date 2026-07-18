@@ -6,7 +6,8 @@ from overlay import OverlayWindow
 from uitray import TrayManager
 from listner import HotkeyListener
 from context import gather_context
-from ai_call import llm_call         
+from ai_call import llm_call
+from intent_router import classify_intent   # NEW
 
 async def async_main():
     overlay = OverlayWindow()
@@ -32,10 +33,13 @@ async def async_main():
               f"screenshot={t['screenshot']}ms | profile={t['profile']}ms | "
               f"TOTAL={t['total']}ms")
 
-        mode = "vision" if ctx.should_use_vision else "text"
-        overlay.show_at(x, y, f"{ctx.app_name} · {mode} · thinking...")   
+        intent_result = await classify_intent(ctx)                          # NEW
+        print(f"Intent: {intent_result.intent} (confidence: {intent_result.confidence})")  # NEW
 
-        await llm_call(ctx, overlay)                                      
+        mode = "vision" if ctx.should_use_vision else "text"
+        overlay.show_at(x, y, f"{ctx.app_name} · {mode} · {intent_result.intent}")   # CHANGED — shows intent instead of "thinking..."
+
+        await llm_call(ctx, overlay)
 
     def on_hotkey_wrapper(x, y):
         asyncio.create_task(on_hotkey(x, y))
