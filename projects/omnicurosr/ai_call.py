@@ -3,6 +3,7 @@ import base64
 from dotenv import load_dotenv
 from groq import AsyncGroq
 from context import ContextBundle
+from critic import verify
 
 load_dotenv()
 
@@ -109,6 +110,13 @@ async def llm_call(ctx: ContextBundle, overlay, intent: str = "general_chat") ->
                 buffer = ""
 
         overlay.stream_finished.emit()
+        if not (ctx.should_use_vision and ctx.screenshot_bytes):
+            full_answer = overlay.response_view.toPlainText()
+            verdict = await verify(ctx.ui_text, full_answer, intent)
+            badge = "verified" if verdict.verdict == "accept" else "unverified"
+            overlay.context_label.setText(f"{badge} — press Esc to dismiss")
+
 
     except Exception as e:
         overlay.stream_error.emit(str(e))
+        
