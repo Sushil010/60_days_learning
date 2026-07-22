@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from groq import AsyncGroq
 from context import ContextBundle
 from critic import verify
-
+from entities import detect_entities
 load_dotenv()
 
 client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
@@ -110,6 +110,9 @@ async def llm_call(ctx: ContextBundle, overlay, intent: str = "general_chat") ->
                 buffer = ""
 
         overlay.stream_finished.emit()
+        full_answer = overlay.response_view.toPlainText()
+        entities = detect_entities(ctx.ui_text, full_answer)
+        overlay.set_action_buttons(entities)
         if not (ctx.should_use_vision and ctx.screenshot_bytes):
             full_answer = overlay.response_view.toPlainText()
             verdict = await verify(ctx.ui_text, full_answer, intent)

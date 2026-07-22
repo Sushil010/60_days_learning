@@ -2,6 +2,7 @@ import os
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QTextBrowser
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QGuiApplication, QTextCursor   
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextBrowser, QPushButton  
 OVERLAY_WIDTH = 520
 OVERLAY_HEIGHT = 400
 OVERLAY_CORNER_RADIUS = 16
@@ -15,7 +16,7 @@ class OverlayWindow(QWidget):
     def __init__(self):
         super().__init__(None, Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
-
+        self.button_row = QHBoxLayout() 
         self.setAttribute(Qt.WA_ShowWithoutActivating)
         self.setFixedSize(OVERLAY_WIDTH, OVERLAY_HEIGHT)
 
@@ -32,7 +33,7 @@ class OverlayWindow(QWidget):
         layout.addWidget(self.context_label)
 
         layout.addWidget(self.response_view)
-
+        layout.addLayout(self.button_row)  
         self.token_received.connect(self._append_token)
         self.stream_finished.connect(self._on_stream_done)     
         self.stream_error.connect(self._on_error)               
@@ -74,3 +75,29 @@ class OverlayWindow(QWidget):
 
     def _on_error(self, msg: str):     
         self.response_view.setPlainText(f"Error: {msg}")
+
+    def set_action_buttons(self, entities):
+        while self.button_row.count():
+            item = self.button_row.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+
+        for entity in entities:
+            btn = QPushButton(entity.label)
+            btn.setStyleSheet(
+                "background: rgba(124,58,237,0.3); color: white; "
+                "border: none; border-radius: 6px; padding: 4px 10px; font-size: 11px;"
+            )
+            btn.clicked.connect(lambda checked=False, e=entity: self._handle_action(e))
+            self.button_row.addWidget(btn)
+
+    def _handle_action(self, entity):
+        import webbrowser
+        import pyperclip
+
+        if entity.kind == "url":
+            webbrowser.open(entity.value)
+        elif entity.kind in ("code", "list"):
+            pyperclip.copy(entity.value)
+            self.context_label.setText("Copied to clipboard!")
