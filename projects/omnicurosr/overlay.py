@@ -51,15 +51,20 @@ class OverlayWindow(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground)
 
         self.button_row = QHBoxLayout()
+        self.pinned = False   # NEW
 
         self.stop_button = QPushButton("✕ Stop")
-        self.stop_button.setStyleSheet(STOP_BUTTON_STYLE)          
+        self.stop_button.setStyleSheet(STOP_BUTTON_STYLE)
         self.stop_button.clicked.connect(self._on_stop_clicked)
         self.stop_button.hide()
 
+        self.pin_button = QPushButton("📌 Pin")   # NEW
+        self.pin_button.setStyleSheet(BUTTON_STYLE)
+        self.pin_button.clicked.connect(self._on_pin_clicked)
+
         self.followup_input = QLineEdit()
         self.followup_input.setPlaceholderText("Ask a follow-up... (Enter to send)")
-        self.followup_input.setStyleSheet(                          
+        self.followup_input.setStyleSheet(
             "QLineEdit { background: rgba(255,255,255,0.06); color: white; "
             "border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; "
             "padding: 8px 10px; font-size: 12px; } "
@@ -77,16 +82,17 @@ class OverlayWindow(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.addWidget(self.stop_button)
+        layout.addWidget(self.pin_button)   
         layout.addWidget(self.followup_input)
 
         self.context_label = QLabel("Ready")
-        self.context_label.setStyleSheet(                           
+        self.context_label.setStyleSheet(
             "color: rgba(196, 165, 255, 0.95); font-size: 11px; font-weight: 600; "
             "letter-spacing: 0.5px; padding-bottom: 4px;"
         )
 
         self.response_view = QTextBrowser()
-        self.response_view.setStyleSheet(                           
+        self.response_view.setStyleSheet(
             "QTextBrowser { background: transparent; color: rgba(255,255,255,0.92); "
             "border: none; font-size: 13px; font-family: 'Segoe UI', sans-serif; "
             "line-height: 1.5; padding: 4px 0px; } "
@@ -103,6 +109,9 @@ class OverlayWindow(QWidget):
         self.stream_error.connect(self._on_error)
 
     def show_at(self, x: int, y: int, text: str = ""):
+        if self.pinned:  
+            return
+
         screen = QGuiApplication.primaryScreen().geometry()
         if x + OVERLAY_WIDTH > screen.right():
             x -= OVERLAY_WIDTH
@@ -131,7 +140,6 @@ class OverlayWindow(QWidget):
         gradient.setColorAt(1, QColor(15, 15, 22, 235))
         painter.fillPath(path, gradient)
 
-        # Thin gradient border for a subtle "glass edge" look
         border_gradient = QLinearGradient(0, 0, self.width(), self.height())
         border_gradient.setColorAt(0, QColor(124, 58, 237, 120))
         border_gradient.setColorAt(1, QColor(59, 130, 246, 60))
@@ -141,7 +149,10 @@ class OverlayWindow(QWidget):
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Escape:
-            self.hide()
+            if not self.pinned:  
+                self.hide()
+            else:
+                self.context_label.setText("Pinned  click  to unpin, then Esc")
         super().keyPressEvent(event)
 
     def _append_token(self, token: str):
@@ -150,8 +161,13 @@ class OverlayWindow(QWidget):
         cursor.insertText(token)
         self.response_view.setTextCursor(cursor)
 
+    def render_as_markdown(self):  
+        raw_text = self.response_view.toPlainText()
+        self.response_view.setMarkdown(raw_text)
+
     def _on_stream_done(self):
-        self.context_label.setText("Done press Esc to dismiss")
+        self.render_as_markdown()   
+        self.context_label.setText("Done — press Esc to dismiss")
         self.stop_button.hide()
         self.followup_input.show()
 
@@ -167,7 +183,7 @@ class OverlayWindow(QWidget):
 
         for entity in entities:
             btn = QPushButton(entity.label)
-            btn.setStyleSheet(BUTTON_STYLE)          
+            btn.setStyleSheet(BUTTON_STYLE)
             btn.clicked.connect(lambda checked=False, e=entity: self._handle_action(e))
             self.button_row.addWidget(btn)
 
@@ -186,6 +202,10 @@ class OverlayWindow(QWidget):
             self.current_task.cancel()
         self.stop_button.hide()
         self.context_label.setText("Cancelled — press Esc to dismiss")
+
+    def _on_pin_clicked(self):   # NEW
+        self.pinned = not self.pinned
+        self.pin_button.setText("Pinned" if self.pinned else "Pin")
 
     def _on_followup_submitted(self):
         text = self.followup_input.text().strip()
