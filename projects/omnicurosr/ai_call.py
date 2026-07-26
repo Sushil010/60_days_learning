@@ -5,11 +5,14 @@ from groq import AsyncGroq
 from context import ContextBundle
 from critic import verify
 from entities import detect_entities
+from config import GROQ_API_KEY, MODEL_NAME, VISION_MODEL   # CHANGED
+
+
+
 load_dotenv()
 
-client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
-MODEL_NAME = "qwen/qwen3.6-27b"
-VISION_MODEL = "qwen/qwen3.6-27b"   
+# client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
+client = AsyncGroq(api_key=GROQ_API_KEY)
 
 SYSTEM_PROMPTS = {
     "explain_code": """You are a system-wide AI assistant embedded at the user's mouse cursor.

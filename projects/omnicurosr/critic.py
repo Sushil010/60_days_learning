@@ -3,11 +3,14 @@ from dotenv import load_dotenv
 from groq import AsyncGroq
 from pydantic import BaseModel
 from typing import Literal
+from config import GROQ_API_KEY, CRITIC_MODEL
+
 
 load_dotenv()
 
 client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
-CRITIC_MODEL = "qwen/qwen3.6-27b"
+CRITIC_MODEL = CRITIC_MODEL
+client = AsyncGroq(api_key=GROQ_API_KEY)
 
 CRITIC_INTENTS = {"explain_code", "fix_code"}   
 

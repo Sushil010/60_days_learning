@@ -2,11 +2,12 @@ import os
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextBrowser, QPushButton, QLineEdit
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QGuiApplication, QTextCursor, QLinearGradient, QPen, QBrush
+from config import OVERLAY_WIDTH, OVERLAY_HEIGHT, OVERLAY_CORNER_RADIUS, HOTKEY   # CHANGED
 
 OVERLAY_WIDTH = 520
 OVERLAY_HEIGHT = 400
 OVERLAY_CORNER_RADIUS = 16
-HOTKEY = os.getenv("HOTKEY", "ctrl+space")
+HOTKEY = HOTKEY
 
 BUTTON_STYLE = """
 QPushButton {

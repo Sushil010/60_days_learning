@@ -3,13 +3,17 @@ from dotenv import load_dotenv
 from groq import AsyncGroq
 from pydantic import BaseModel
 from typing import Literal
-
 from context import ContextBundle
+from config import GROQ_API_KEY, ROUTER_MODEL   
+
 
 load_dotenv()
 
-client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
-ROUTER_MODEL = "qwen/qwen3.6-27b"
+client = AsyncGroq(api_key=GROQ_API_KEY)
+ROUTER_MODEL = ROUTER_MODEL
+
+# client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
+# ROUTER_MODEL = "qwen/qwen3.6-27b"
 
 
 class IntentResult(BaseModel):

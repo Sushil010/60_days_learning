@@ -14,32 +14,20 @@ async def async_main():
     tray = TrayManager(overlay)
     tray.show()
 
-    overlay.last_ctx = None   # NEW — holds the most recent context, so follow-ups can reuse it
+    overlay.last_ctx = None
 
     hotkey = HotkeyListener()
 
     async def on_hotkey(x, y):
         ctx = await gather_context(x, y)
-        overlay.last_ctx = ctx  
-
-        print(f"App: {ctx.app_name}")
-        print(f"Window: {ctx.window_title}")
-        print(f"UI text: {ctx.ui_text[:100]}")
-        print(f"Control type: {ctx.control_type}")
-        print(f"Language: {ctx.language}")
-        print(f"Using vision: {ctx.should_use_vision}")
-        if ctx.screenshot_bytes:
-            print(f"Screenshot size: {len(ctx.screenshot_bytes)} bytes")
-
-        t = ctx.timing
-        print(f"Timing: app={t['app_detect']}ms | uia={t['uia_read']}ms | "
-              f"screenshot={t['screenshot']}ms | profile={t['profile']}ms | "
-              f"TOTAL={t['total']}ms")
+        overlay.last_ctx = ctx
 
         intent_result = await classify_intent(ctx)
-        print(f"Intent: {intent_result.intent} (confidence: {intent_result.confidence})")
-
         mode = "vision" if ctx.should_use_vision else "text"
+
+        print(f"[{ctx.app_name}] {mode} · {intent_result.intent} "
+              f"(confidence: {intent_result.confidence}) · {ctx.timing['total']}ms")
+
         overlay.show_at(x, y, f"{ctx.app_name} · {mode} · {intent_result.intent}")
 
         await llm_call(ctx, overlay, intent_result.intent)
@@ -48,26 +36,25 @@ async def async_main():
         task = asyncio.create_task(on_hotkey(x, y))
         overlay.current_task = task
 
-    async def run_followup(question: str):   
+    async def run_followup(question: str):
         ctx = overlay.last_ctx
         if ctx is None:
             return
 
         overlay.show_at(ctx.cursor_x, ctx.cursor_y, "Following up...")
 
-
         ctx.ui_text = f"{ctx.ui_text}\n\n[Follow-up question: {question}]"
 
         intent_result = await classify_intent(ctx)
-        print(f"Follow-up intent: {intent_result.intent} (confidence: {intent_result.confidence})")
+        print(f"Follow-up: {intent_result.intent} (confidence: {intent_result.confidence})")
 
         await llm_call(ctx, overlay, intent_result.intent)
 
-    def handle_followup(question: str):   
+    def handle_followup(question: str):
         task = asyncio.create_task(run_followup(question))
         overlay.current_task = task
 
-    overlay.on_followup = handle_followup   
+    overlay.on_followup = handle_followup
 
     hotkey.hotkey_triggered.connect(on_hotkey_wrapper)
     hotkey.start()

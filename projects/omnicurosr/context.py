@@ -5,8 +5,7 @@ from typing import Optional
 from app_detect import get_active_app
 from screen_capture import capture_region
 from windows_uia import read_ui_text
-
-MIN_TEXT_LENGTH = 20
+from config import MIN_TEXT_LENGTH, SKIP_UIA_APPS   
 
 
 @dataclass
@@ -31,10 +30,16 @@ async def gather_context(cursor_x: int, cursor_y: int):
     t0 = time.perf_counter()                          
 
     app_info = get_active_app()
-    t1 = time.perf_counter()                          
+    t1 = time.perf_counter()          
 
-    ui_data = await read_ui_text(cursor_x, cursor_y)
-    t2 = time.perf_counter()                          
+    if app_info["name"] in SKIP_UIA_APPS:    
+        ui_data = {"text": "", "control_type": "skipped-known-unreliable"}
+    else:
+        ui_data = await read_ui_text(cursor_x, cursor_y)
+    t2 = time.perf_counter()                
+
+    # ui_data = await read_ui_text(cursor_x, cursor_y)
+    # t2 = time.perf_counter()                          
 
     ui_text = ui_data.get("text", "")
     vision_needed = needs_vision(ui_text)
