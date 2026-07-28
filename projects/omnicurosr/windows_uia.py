@@ -1,6 +1,7 @@
 import uiautomation as auto
 from concurrent.futures import ThreadPoolExecutor
 import asyncio
+from config import UIA_TIMEOUT_SEC   
 
 _executor = ThreadPoolExecutor(max_workers=1)
 
@@ -40,13 +41,13 @@ async def read_ui_text(x: int, y: int) -> dict:
     loop = asyncio.get_event_loop()
     future = loop.run_in_executor(_executor, _blocking_read, x, y)
     try:
-        return await asyncio.wait_for(future, timeout=1.5)
+        return await asyncio.wait_for(future, timeout=UIA_TIMEOUT_SEC)   # CHANGED — was hardcoded 1.5
     except asyncio.TimeoutError:
         return {"text": "", "control_type": "timeout"}
     except Exception as e:
         return {"text": "", "control_type": "error"}
 
-def _blocking_get_full_text(x: int, y: int):
+def _blocking_get_full_text(x: int, y: int) -> dict:
     control = auto.ControlFromPoint(x, y)
     if control is None:
         return {"text": "", "can_edit": False}
@@ -57,7 +58,7 @@ def _blocking_get_full_text(x: int, y: int):
         vp = control.GetValuePattern()
         if vp:
             text = vp.Value
-            can_edit = True   
+            can_edit = True
     except Exception:
         pass
 
@@ -65,14 +66,14 @@ def _blocking_get_full_text(x: int, y: int):
         try:
             tp = control.GetTextPattern()
             if tp:
-                text = tp.DocumentRange.GetText(-1)  
+                text = tp.DocumentRange.GetText(-1)
         except Exception:
             pass
 
     return {"text": text.strip(), "can_edit": can_edit}
 
 
-def _blocking_set_text(x: int, y: int, new_text: str):
+def _blocking_set_text(x: int, y: int, new_text: str) -> bool:
     control = auto.ControlFromPoint(x, y)
     if control is None:
         return False
