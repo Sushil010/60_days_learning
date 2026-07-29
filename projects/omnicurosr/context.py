@@ -19,8 +19,8 @@ class ContextBundle:
     cursor_x: int
     cursor_y: int
     language: Optional[str] = None
-    timing: dict = field(default_factory=dict)       
-
+    timing: dict = field(default_factory=dict)    
+    user_question: Optional[str] = None  
 
 def needs_vision(ui_text: str):
     return len(ui_text.strip()) < MIN_TEXT_LENGTH
@@ -36,10 +36,7 @@ async def gather_context(cursor_x: int, cursor_y: int):
         ui_data = {"text": "", "control_type": "skipped-known-unreliable"}
     else:
         ui_data = await read_ui_text(cursor_x, cursor_y)
-    t2 = time.perf_counter()                
-
-    # ui_data = await read_ui_text(cursor_x, cursor_y)
-    # t2 = time.perf_counter()                          
+    t2 = time.perf_counter()                                     
 
     ui_text = ui_data.get("text", "")
     vision_needed = needs_vision(ui_text)

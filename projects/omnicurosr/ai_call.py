@@ -42,12 +42,14 @@ Be concise: 2-3 sentences. Do not show your reasoning steps or thinking process 
 
 def build_user_message(ctx: ContextBundle) -> str:
     lang_info = f" (language: {ctx.language})" if ctx.language else ""
+    instruction = ctx.user_question if ctx.user_question else "Briefly explain or summarize what's here."   # NEW — the real fix
+
     return f"""App: {ctx.app_name}
 Window: {ctx.window_title}{lang_info}
 Text under cursor:
 {ctx.ui_text or '[no readable text found]'}
-
-Briefly explain or summarize what's here."""
+{instruction}
+"""
 
 import re   # NEW
 

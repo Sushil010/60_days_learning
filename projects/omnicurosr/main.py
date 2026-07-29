@@ -8,8 +8,7 @@ from listner import HotkeyListener
 from context import gather_context
 from ai_call import llm_call
 from intent_router import classify_intent
-from edit_agent import edit_file_with_ai   
-
+from edit_agent import edit_file_with_ai, looks_like_edit_request 
 async def async_main():
     overlay = OverlayWindow()
     tray = TrayManager(overlay)
@@ -42,15 +41,15 @@ async def async_main():
         if ctx is None:
             return
 
-        if question.strip().lower().startswith("/edit "):          
-            instruction = question[len("/edit "):].strip()
+        if question.strip().lower().startswith("/edit ") or looks_like_edit_request(question):          
+            instruction = question[len("/edit "):].strip() if question.lower().startswith("/edit ") else question
             overlay.show_at(ctx.cursor_x, ctx.cursor_y, "Applying edit...")
             await edit_file_with_ai(ctx.cursor_x, ctx.cursor_y, instruction, overlay)
             return
 
         overlay.show_at(ctx.cursor_x, ctx.cursor_y, "Following up")
-
-        ctx.ui_text = f"{ctx.ui_text}\n\n[Follow-up question: {question}]"
+        ctx.user_question = question
+        # ctx.ui_text = f"{ctx.ui_text}\n\n[Follow-up question: {question}]"
 
         intent_result = await classify_intent(ctx)
         print(f"Follow-up: {intent_result.intent} (confidence: {intent_result.confidence})")

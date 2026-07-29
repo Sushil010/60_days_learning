@@ -41,7 +41,19 @@ async def edit_file_with_ai(x: int, y: int, instruction: str, overlay):
     success = await set_editable_text(x, y, new_text)
 
     if success:
-        overlay.context_label.setText("✓ File updated — press Esc to dismiss")
+        overlay.context_label.setText("File updated — press Esc to dismiss")
         overlay.response_view.setPlainText(f"Applied edit: {instruction}")
     else:
         overlay.stream_error.emit("Read the file, but writing back failed. The app may have lost focus or blocked the edit.")
+EDIT_TRIGGER_WORDS = [
+    "edit this", "edit the", "rewrite", "replace this", "replace it",
+    "update this", "modify this", "change this", "put this into",
+    "write this into", "apply this to the file", "summarize this into",
+    "make it into", "turn this into",
+]
+
+def looks_like_edit_request(text: str) -> bool:
+    lowered = text.lower()
+    return any(kw in lowered for kw in EDIT_TRIGGER_WORDS)
+
+
